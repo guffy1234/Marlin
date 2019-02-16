@@ -469,7 +469,7 @@ static void lcd_implementation_init(
 void lcd_implementation_clear() { lcd.clear(); }
 void lcd_print(const char c) { charset_mapper(c); }
 void lcd_print(const char *str) { while (*str) lcd.print(*str++); }
-void lcd_printPGM(const char *str) { while (const char c = pgm_read_byte(str)) lcd.print(c), ++str; }
+//void lcd_printPGM(const char *str) { while (const char c = pgm_read_byte(str)) lcd.print(c), ++str; }
 
 void lcd_print_utf(const char *str, uint8_t n=LCD_WIDTH) {
   char c;
@@ -480,7 +480,12 @@ void lcd_printPGM_utf(const char *str, uint8_t n=LCD_WIDTH) {
   char c;
   while (n && (c = pgm_read_byte(str))) n -= charset_mapper(c), ++str;
 }
-
+/*xanoy corrections to properly ru fonts work*/
+void lcd_printPGM(const char *str) {
+  static char text_buf[(3*LCD_WIDTH)];
+  strncpy_P(text_buf, str, ((3 * LCD_WIDTH)-1));
+  lcd_print_utf(text_buf);
+}
 #if ENABLED(SHOW_BOOTSCREEN)
 
   void lcd_erase_line(const int16_t line) {
@@ -533,7 +538,7 @@ void lcd_printPGM_utf(const char *str, uint8_t n=LCD_WIDTH) {
   static void logo_lines(const char* const extra) {
     int16_t indent = (LCD_WIDTH - 8 - utf8_strlen_P(extra)) / 2;
     lcd.setCursor(indent, 0); lcd.print('\x00'); lcd_printPGM(PSTR( "------" ));  lcd.write('\x01');
-    lcd.setCursor(indent, 1);                    lcd_printPGM(PSTR("|Marlin|"));  lcd_printPGM(extra);
+    lcd.setCursor(indent, 1);                    lcd_printPGM(PSTR(" epo3d "));  lcd_printPGM(extra);
     lcd.setCursor(indent, 2); lcd.write('\x02'); lcd_printPGM(PSTR( "------" ));  lcd.write('\x03');
   }
 
