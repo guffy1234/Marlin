@@ -265,6 +265,16 @@ void GcodeSuite::process_parsed_command(
       #if HAS_MESH
         case 42: G42(); break;                                    // G42: Coordinated move to a mesh point
       #endif
+      #if ENABLED(CNC_COORDINATE_SYSTEMS)
+        case 53: G53(); break;
+        case 54: G54(); break;
+        case 55: G55(); break;
+        case 56: G56(); break;
+        case 57: G57(); break;
+        case 58: G58(); break;
+        case 59: G59(); break;
+      #endif
+ 
 
       #if ENABLED(CALIBRATION_GCODE)
         case 425: G425(); break;                                  // G425: Perform calibration with calibration cube
