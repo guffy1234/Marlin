@@ -1984,7 +1984,7 @@
 // Enable and set a (default) feedrate for all G0 moves
 #define G0_FEEDRATE 1200 // (mm/m)
 #ifdef G0_FEEDRATE
-  //#define VARIABLE_G0_FEEDRATE // The G0 feedrate is set by F in G0 motion mode
+  #define VARIABLE_G0_FEEDRATE // The G0 feedrate is set by F in G0 motion mode
 #endif
 
 /**
