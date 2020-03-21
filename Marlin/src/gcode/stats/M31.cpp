@@ -1,9 +1,9 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (C) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
- * Copyright (C) 2011 Camiel Gubbels / Erik van der Zalm
+ * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,20 +26,13 @@
 #include "../../libs/duration_t.h"
 #include "../../lcd/ultralcd.h"
 
-#if NUM_SERIAL > 1
-  #include "../../gcode/queue.h"
-#endif
-
 /**
  * M31: Get the time since the start of SD Print (or last M109)
  */
 void GcodeSuite::M31() {
-  #if NUM_SERIAL > 1
-    const int16_t port = command_queue_port[cmd_queue_index_r];
-  #endif
   char buffer[21];
-  duration_t elapsed = print_job_timer.duration();
-  elapsed.toString(buffer);
+  duration_t(print_job_timer.duration()).toString(buffer);
+
   ui.set_status(buffer);
 
   SERIAL_ECHO_START();

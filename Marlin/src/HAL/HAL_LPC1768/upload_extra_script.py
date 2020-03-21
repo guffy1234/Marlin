@@ -3,6 +3,7 @@
 #  if target_filename is found then that drive is used
 #  else if target_drive is found then that drive is used
 #
+from __future__ import print_function
 
 target_filename = "FIRMWARE.CUR"
 target_drive = "REARM"
@@ -12,11 +13,11 @@ import platform
 current_OS = platform.system()
 Import("env")
 
-def detect_error(e):
-    print '\nUnable to find destination disk (' + e + ')\n' \
+def print_error(e):
+    print('\nUnable to find destination disk (' + e + ')\n' \
           'Please select it in platformio.ini using the upload_port keyword ' \
-          '(https://docs.platformio.org/en/latest/projectconf/section_env_upload.html)\n' \
-          'or copy the firmware (.pioenvs/' + env.get('PIOENV') + '/firmware.bin) manually to the appropriate disk\n'
+          '(https://docs.platformio.org/en/latest/projectconf/section_env_upload.html) ' \
+          'or copy the firmware (.pio/build/' + env.get('PIOENV') + '/firmware.bin) manually to the appropriate disk\n')
 
 try:
     if current_OS == 'Windows':
@@ -30,7 +31,7 @@ try:
         #
         import subprocess
         # typical result (string): 'Drives: C:\ D:\ E:\ F:\ G:\ H:\ I:\ J:\ K:\ L:\ M:\ Y:\ Z:\'
-        driveStr = subprocess.check_output("fsutil fsinfo drives")
+        driveStr = subprocess.check_output("fsutil fsinfo drives").decode('utf8')
         # typical result (string): 'C:\ D:\ E:\ F:\ G:\ H:\ I:\ J:\ K:\ L:\ M:\ Y:\ Z:\'
         driveStr = driveStr.strip().lstrip('Drives: ')
         # typical result (array of stings): ['C:\\', 'D:\\', 'E:\\', 'F:\\',
@@ -43,7 +44,7 @@ try:
         for drive in drives:
             final_drive_name = drive.strip().rstrip('\\')   # typical result (string): 'C:'
             try:
-                volume_info = subprocess.check_output('cmd /C dir ' + final_drive_name, stderr=subprocess.STDOUT)
+                volume_info = subprocess.check_output('cmd /C dir ' + final_drive_name, stderr=subprocess.STDOUT).decode('utf8')
             except Exception as e:
                 continue
             else:
@@ -63,9 +64,9 @@ try:
             env.Replace(
                 UPLOAD_PORT=upload_disk
             )
-            print 'upload disk: ', upload_disk
+            print('upload disk: ', upload_disk)
         else:
-            detect_error('Autodetect Error')
+            print_error('Autodetect Error')
 
     elif current_OS == 'Linux':
         #
@@ -100,9 +101,9 @@ try:
                 UPLOAD_FLAGS="-P$UPLOAD_PORT",
                 UPLOAD_PORT=upload_disk
             )
-            print 'upload disk: ', upload_disk
+            print('upload disk: ', upload_disk)
         else:
-            detect_error('Autodetect Error')
+            print_error('Autodetect Error')
 
     elif current_OS == 'Darwin':  # MAC
         #
@@ -133,9 +134,9 @@ try:
             env.Replace(
                 UPLOAD_PORT=upload_disk
             )
-            print '\nupload disk: ', upload_disk, '\n'
+            print('\nupload disk: ', upload_disk, '\n')
         else:
-            detect_error('Autodetect Error')
+            print_error('Autodetect Error')
 
 except Exception as e:
-    detect_error(str(e))
+    print_error(str(e))
