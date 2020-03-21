@@ -1,6 +1,6 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (c) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2020 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
  * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
@@ -56,8 +56,6 @@
     #endif
   );
 
-  bool MarlinUI::wait_for_bl_move; // = false
-
   //
   // Bed leveling is done. Wait for G29 to complete.
   // A flag is used so that this can release control
@@ -70,7 +68,7 @@
   // ** This blocks the command queue! **
   //
   void _lcd_level_bed_done() {
-    if (!ui.wait_for_bl_move) {
+    if (!ui.wait_for_move) {
       #if MANUAL_PROBE_HEIGHT > 0 && DISABLED(MESH_BED_LEVELING)
         // Display "Done" screen and wait for moves to complete
         line_to_z(MANUAL_PROBE_HEIGHT);
@@ -81,7 +79,7 @@
         ui.completion_feedback();
       #endif
     }
-    if (ui.should_draw()) draw_menu_item_static(LCD_HEIGHT >= 4 ? 1 : 0, GET_TEXT(MSG_LEVEL_BED_DONE));
+    if (ui.should_draw()) MenuItem_static::draw(LCD_HEIGHT >= 4, GET_TEXT(MSG_LEVEL_BED_DONE));
     ui.refresh(LCDVIEW_CALL_REDRAW_NEXT);
   }
 
@@ -103,7 +101,7 @@
         //
         // The last G29 records the point and enables bed leveling
         //
-        ui.wait_for_bl_move = true;
+        ui.wait_for_move = true;
         ui.goto_screen(_lcd_level_bed_done);
         #if ENABLED(MESH_BED_LEVELING)
           queue.inject_P(PSTR("G29 S2"));
@@ -132,7 +130,7 @@
     //
     if (ui.should_draw()) {
       const float v = current_position.z;
-      draw_edit_screen(GET_TEXT(MSG_MOVE_Z), ftostr43sign(v + (v < 0 ? -0.0001f : 0.0001f), '+'));
+      MenuEditItemBase::draw_edit_screen(GET_TEXT(MSG_MOVE_Z), ftostr43sign(v + (v < 0 ? -0.0001f : 0.0001f), '+'));
     }
   }
 
@@ -143,10 +141,10 @@
     if (ui.should_draw()) {
       char msg[10];
       sprintf_P(msg, PSTR("%i / %u"), int(manual_probe_index + 1), total_probe_points);
-      draw_edit_screen(GET_TEXT(MSG_LEVEL_BED_NEXT_POINT), msg);
+      MenuEditItemBase::draw_edit_screen(GET_TEXT(MSG_LEVEL_BED_NEXT_POINT), msg);
     }
     ui.refresh(LCDVIEW_CALL_NO_REDRAW);
-    if (!ui.wait_for_bl_move) ui.goto_screen(_lcd_level_bed_get_z);
+    if (!ui.wait_for_move) ui.goto_screen(_lcd_level_bed_get_z);
   }
 
   //
@@ -156,7 +154,7 @@
     ui.goto_screen(_lcd_level_bed_moving);
 
     // G29 Records Z, moves, and signals when it pauses
-    ui.wait_for_bl_move = true;
+    ui.wait_for_move = true;
     #if ENABLED(MESH_BED_LEVELING)
       queue.inject_P(manual_probe_index ? PSTR("G29 S2") : PSTR("G29 S1"));
     #elif ENABLED(PROBE_MANUALLY)
@@ -169,7 +167,7 @@
   //         Move to the first probe position
   //
   void _lcd_level_bed_homing_done() {
-    if (ui.should_draw()) draw_edit_screen(GET_TEXT(MSG_LEVEL_BED_WAITING));
+    if (ui.should_draw()) MenuItem_static::draw(1, GET_TEXT(MSG_LEVEL_BED_WAITING));
     if (ui.use_click()) {
       manual_probe_index = 0;
       _lcd_level_goto_next_point();
@@ -195,7 +193,7 @@
     ui.defer_status_screen();
     set_all_unhomed();
     ui.goto_screen(_lcd_level_bed_homing);
-    queue.inject_P(PSTR("G28"));
+    queue.inject_P(G28_STR);
   }
 
 #endif // PROBE_MANUALLY || MESH_BED_LEVELING
@@ -241,7 +239,7 @@ void menu_bed_leveling() {
 
   // Auto Home if not using manual probing
   #if NONE(PROBE_MANUALLY, MESH_BED_LEVELING)
-    if (!is_homed) GCODES_ITEM(MSG_AUTO_HOME, PSTR("G28"));
+    if (!is_homed) GCODES_ITEM(MSG_AUTO_HOME, G28_STR);
   #endif
 
   // Level Bed
@@ -268,7 +266,7 @@ void menu_bed_leveling() {
   #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
     // Shadow for editing the fade height
     editable.decimal = planner.z_fade_height;
-    EDIT_ITEM_FAST(float3, MSG_Z_FADE_HEIGHT, &editable.decimal, 0, 100, [](){ set_z_fade_height(editable.decimal); });
+    EDIT_ITEM_FAST(float3, MSG_Z_FADE_HEIGHT, &editable.decimal, 0, 100, []{ set_z_fade_height(editable.decimal); });
   #endif
 
   //
@@ -281,7 +279,7 @@ void menu_bed_leveling() {
   #if ENABLED(BABYSTEP_ZPROBE_OFFSET)
     SUBMENU(MSG_ZPROBE_ZOFFSET, lcd_babystep_zoffset);
   #elif HAS_BED_PROBE
-    EDIT_ITEM(float52, MSG_ZPROBE_ZOFFSET, &probe_offset.z, Z_PROBE_OFFSET_RANGE_MIN, Z_PROBE_OFFSET_RANGE_MAX);
+    EDIT_ITEM(LCD_Z_OFFSET_TYPE, MSG_ZPROBE_ZOFFSET, &probe.offset.z, Z_PROBE_OFFSET_RANGE_MIN, Z_PROBE_OFFSET_RANGE_MAX);
   #endif
 
   #if ENABLED(LEVEL_BED_CORNERS)

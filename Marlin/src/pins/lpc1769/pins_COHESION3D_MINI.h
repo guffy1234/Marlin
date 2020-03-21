@@ -1,6 +1,6 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (c) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2020 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
  * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
@@ -25,7 +25,7 @@
  * Cohesion3D Mini pin assignments
  */
 
-#ifndef LPC1769
+#ifndef MCU_LPC1769
   #error "Oops! Make sure you have the LPC1769 environment selected in your IDE."
 #endif
 
@@ -88,8 +88,8 @@
 // Analog Inputs
 //  3.3V max when defined as an analog input
 //
-#define TEMP_0_PIN          0   // P0_23
-#define TEMP_BED_PIN        1   // P0_24
+#define TEMP_0_PIN          P0_23_A0   // P0_23
+#define TEMP_BED_PIN        P0_24_A1   // P0_24
 
 //
 // Heaters / Fans

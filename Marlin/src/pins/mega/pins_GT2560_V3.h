@@ -1,6 +1,6 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (c) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2020 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
  * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
@@ -22,7 +22,7 @@
 #pragma once
 
 /**
- * GT2560 V3.0 pin assignment
+ * GT2560 RevB + GT2560 V3.0 + GT2560 V3.1 + GT2560 V4.0 pin assignment
  */
 
 #if !defined(__AVR_ATmega1280__) && !defined(__AVR_ATmega2560__)
@@ -112,6 +112,10 @@
 #define E1_DIR_PIN         47
 #define E1_ENABLE_PIN      48
 
+#define E2_STEP_PIN        43
+#define E2_DIR_PIN         45
+#define E2_ENABLE_PIN      41
+
 //
 // Temperature Sensors
 //
@@ -128,8 +132,8 @@
 #define HEATER_2_PIN        1
 #define HEATER_BED_PIN      4
 #define FAN_PIN             9
-//#define FAN1_PIN          8
-//#define FAN2_PIN          7
+#define FAN1_PIN            8
+#define FAN2_PIN            7
 
 //
 // Misc. Functions

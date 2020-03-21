@@ -1,6 +1,6 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (c) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2020 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
  * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
@@ -26,19 +26,27 @@
   #include "../feature/leds/leds.h"
 #endif
 
+#if ENABLED(HOST_ACTION_COMMANDS)
+  #include "../feature/host_actions.h"
+#endif
+
 // All displays share the MarlinUI class
+#include "ultralcd.h"
+MarlinUI ui;
+
 #if HAS_DISPLAY
+  #include "../module/printcounter.h"
+  #include "../MarlinCore.h"
   #include "../gcode/queue.h"
-  #include "ultralcd.h"
   #include "fontutils.h"
-  MarlinUI ui;
   #include "../sd/cardreader.h"
   #if ENABLED(EXTENSIBLE_UI)
     #define START_OF_UTF8_CHAR(C) (((C) & 0xC0u) != 0x80u)
   #endif
-  #if ENABLED(HOST_ACTION_COMMANDS)
-    #include "../feature/host_actions.h"
-  #endif
+#endif
+
+#if LCD_HAS_WAIT_FOR_MOVE
+  bool MarlinUI::wait_for_move; // = false
 #endif
 
 #if HAS_SPI_LCD
@@ -59,17 +67,18 @@
 
 #if ENABLED(LCD_SET_PROGRESS_MANUALLY)
   MarlinUI::progress_t MarlinUI::progress_override; // = 0
+  #if BOTH(LCD_SET_PROGRESS_MANUALLY, USE_M73_REMAINING_TIME)
+    uint32_t MarlinUI::remaining_time;
+  #endif
 #endif
 
-#if HAS_BUZZER
-  #include "../libs/buzzer.h"
+#if ENABLED(PCA9632_BUZZER) || USE_BEEPER
+  #include "../libs/buzzer.h" // for BUZZ() macro
   #if ENABLED(PCA9632_BUZZER)
     #include "../feature/leds/pca9632.h"
   #endif
   void MarlinUI::buzz(const long duration, const uint16_t freq) {
-    #if ENABLED(LCD_USE_I2C_BUZZER)
-      lcd.buzz(duration, freq);
-    #elif ENABLED(PCA9632_BUZZER)
+    #if ENABLED(PCA9632_BUZZER)
       pca9632_buzz(duration, freq);
     #elif USE_BEEPER
       buzzer.tone(duration, freq);
@@ -88,21 +97,18 @@
 #include "../sd/cardreader.h"
 #include "../module/temperature.h"
 #include "../module/planner.h"
-#include "../module/printcounter.h"
 #include "../module/motion.h"
-
-#include "../Marlin.h"
-
-#if ENABLED(POWER_LOSS_RECOVERY)
-  #include "../feature/power_loss_recovery.h"
-#endif
 
 #if ENABLED(AUTO_BED_LEVELING_UBL)
   #include "../feature/bedlevel/bedlevel.h"
 #endif
 
-#if HAS_TRINAMIC
+#if HAS_TRINAMIC_CONFIG
   #include "../feature/tmc_util.h"
+#endif
+
+#if HAS_ADC_BUTTONS
+  #include "../module/thermistor/thermistors.h"
 #endif
 
 #if HAS_ENCODER_ACTION
@@ -177,6 +183,7 @@ millis_t MarlinUI::next_button_update_ms; // = 0
   #endif
 
   screenFunc_t MarlinUI::currentScreen; // Initialized in CTOR
+  bool MarlinUI::screen_changed;
 
   #if ENABLED(ENCODER_RATE_MULTIPLIER)
     bool MarlinUI::encoderRateMultiplierEnabled;
@@ -192,6 +199,7 @@ millis_t MarlinUI::next_button_update_ms; // = 0
   #endif
 
   #if ENABLED(TOUCH_BUTTONS)
+    uint8_t MarlinUI::touch_buttons;
     uint8_t MarlinUI::repeat_delay;
   #endif
 
@@ -295,6 +303,10 @@ void MarlinUI::init() {
       SET_INPUT_PULLUP(BTN_ENC);
     #endif
 
+    #if BUTTON_EXISTS(BACK)
+      SET_INPUT_PULLUP(BTN_BACK);
+    #endif
+
     #if BUTTON_EXISTS(UP)
       SET_INPUT(BTN_UP);
     #endif
@@ -379,7 +391,7 @@ bool MarlinUI::get_blink() {
 
     void _reprapworld_keypad_move(const AxisEnum axis, const int16_t dir) {
       move_menu_scale = REPRAPWORLD_KEYPAD_MOVE_STEP;
-      encoderPosition = dir;
+      ui.encoderPosition = dir;
       switch (axis) {
         case X_AXIS: lcd_move_x(); break;
         case Y_AXIS: lcd_move_y(); break;
@@ -460,7 +472,7 @@ bool MarlinUI::get_blink() {
 
         #endif // HAS_LCD_MENU
 
-        if (!homed && RRK(EN_KEYPAD_F1)) queue.inject_P(PSTR("G28"));
+        if (!homed && RRK(EN_KEYPAD_F1)) queue.inject_P(G28_STR);
         return true;
       }
 
@@ -661,7 +673,7 @@ void MarlinUI::quick_feedback(const bool clear_buttons/*=true*/) {
 
     if (manual_move_axis != (int8_t)NO_AXIS && ELAPSED(millis(), manual_move_start_time) && !planner.is_full()) {
 
-      const feedRate_t fr_mm_s = MMM_TO_MMS(manual_feedrate_mm_m[manual_move_axis]);
+      const feedRate_t fr_mm_s = manual_feedrate_mm_s[manual_move_axis];
       #if IS_KINEMATIC
 
         #if EXTRUDERS > 1
@@ -765,59 +777,49 @@ void MarlinUI::update() {
     static bool wait_for_unclick; // = false
 
     #if ENABLED(TOUCH_BUTTONS)
-
-      #define TOUCH_MENU_MASK 0x80
-
-      static bool arrow_pressed; // = false
-
-      // Handle touch events which are slow to read
-      if (ELAPSED(ms, next_button_update_ms)) {
-        uint8_t touch_buttons = touch.read_buttons();
-        if (touch_buttons) {
-          RESET_STATUS_TIMEOUT();
-          if (touch_buttons & TOUCH_MENU_MASK) {        // Processing Menu Area touch?
-            if (!wait_for_unclick) {                    // If not waiting for a debounce release:
-              wait_for_unclick = true;                  //  - Set debounce flag to ignore continous clicks
-              wait_for_user = false;                    //  - Any click clears wait for user
-              // TODO for next PR.
-              //uint8_t tpos = touch_buttons & ~(TOUCH_MENU_MASK);  // Safe 7bit touched screen coordinate
-              next_button_update_ms = ms + 500;         // Defer next check for 1/2 second
-              #if HAS_LCD_MENU
-                refresh();
-              #endif
-            }
-            touch_buttons = 0;                          // Swallow the touch
-          }
-          buttons |= (touch_buttons & (EN_C | EN_D));   // Pass on Click and Back buttons
-          if (touch_buttons & (EN_A | EN_B)) {          // A and/or B button?
+      if (touch_buttons) {
+        RESET_STATUS_TIMEOUT();
+        if (touch_buttons & (EN_A | EN_B)) {              // Menu arrows, in priority
+          if (ELAPSED(ms, next_button_update_ms)) {
             encoderDiff = (ENCODER_STEPS_PER_MENU_ITEM) * (ENCODER_PULSES_PER_STEP) * encoderDirection;
             if (touch_buttons & EN_A) encoderDiff *= -1;
-            next_button_update_ms = ms + repeat_delay;  // Assume the repeat delay
-            if (!wait_for_unclick && !arrow_pressed) {  // On click prepare for repeat
-              next_button_update_ms += 250;             // Longer delay on first press
-              arrow_pressed = true;                     // Mark arrow as pressed
+            #if ENABLED(AUTO_BED_LEVELING_UBL)
+              if (external_control) ubl.encoder_diff = encoderDiff;
+            #endif
+            next_button_update_ms = ms + repeat_delay;    // Assume the repeat delay
+            if (!wait_for_unclick) {
+              next_button_update_ms += 250;               // Longer delay on first press
+              wait_for_unclick = true;                    // Avoid Back/Select click while repeating
               #if HAS_BUZZER
                 buzz(LCD_FEEDBACK_FREQUENCY_DURATION_MS, LCD_FEEDBACK_FREQUENCY_HZ);
               #endif
             }
           }
         }
-        if (!(touch_buttons & (EN_A | EN_B))) arrow_pressed = false;
+        else if (!wait_for_unclick && (buttons & EN_C)) { // OK button, if not waiting for a debounce release:
+          wait_for_unclick = true;                        //  - Set debounce flag to ignore continous clicks
+          lcd_clicked = !wait_for_user && !no_reentry;    //  - Keep the click if not waiting for a user-click
+          wait_for_user = false;                          //  - Any click clears wait for user
+          quick_feedback();                               //  - Always make a click sound
+        }
       }
+      else // keep wait_for_unclick value
 
     #endif // TOUCH_BUTTONS
 
-    // Integrated LCD click handling via button_pressed
-    if (!external_control && button_pressed()) {
-      if (!wait_for_unclick) {                        // If not waiting for a debounce release:
-        wait_for_unclick = true;                      //  - Set debounce flag to ignore continous clicks
-        lcd_clicked = !wait_for_user && !no_reentry;  //  - Keep the click if not waiting for a user-click
-        wait_for_user = false;                        //  - Any click clears wait for user
-        quick_feedback();                             //  - Always make a click sound
+      {
+        // Integrated LCD click handling via button_pressed
+        if (!external_control && button_pressed()) {
+          if (!wait_for_unclick) {                        // If not waiting for a debounce release:
+            wait_for_unclick = true;                      //  - Set debounce flag to ignore continous clicks
+            lcd_clicked = !wait_for_user && !no_reentry;  //  - Keep the click if not waiting for a user-click
+            wait_for_user = false;                        //  - Any click clears wait for user
+            quick_feedback();                             //  - Always make a click sound
+          }
+        }
+        else
+          wait_for_unclick = false;
       }
-    }
-    else
-      wait_for_unclick = false;
 
     if (LCD_BACK_CLICKED()) {
       quick_feedback();
@@ -882,8 +884,13 @@ void MarlinUI::update() {
     next_lcd_update_ms = ms + LCD_UPDATE_INTERVAL;
 
     #if ENABLED(TOUCH_BUTTONS)
-      if (on_status_screen())
-        next_lcd_update_ms += (LCD_UPDATE_INTERVAL) * 2;
+
+      if (on_status_screen()) next_lcd_update_ms += (LCD_UPDATE_INTERVAL) * 2;
+
+      #if HAS_ENCODER_ACTION
+        touch_buttons = touch.read_buttons();
+      #endif
+
     #endif
 
     #if ENABLED(LCD_HAS_STATUS_INDICATORS)
@@ -1027,7 +1034,8 @@ void MarlinUI::update() {
           // If still drawing and there's another page, update max-time and return now.
           // The nextPage will already be set up on the next call.
           if (drawing_screen && (drawing_screen = u8g.nextPage())) {
-            NOLESS(max_display_update_time, millis() - ms);
+            if (on_status_screen())
+              NOLESS(max_display_update_time, millis() - ms);
             return;
           }
         }
@@ -1044,7 +1052,8 @@ void MarlinUI::update() {
 
       // Keeping track of the longest time for an individual LCD update.
       // Used to do screen throttling when the planner starts to fill up.
-      NOLESS(max_display_update_time, millis() - ms);
+      if (on_status_screen())
+        NOLESS(max_display_update_time, millis() - ms);
     }
 
     #if HAS_LCD_MENU && LCD_TIMEOUT_TO_STATUS
@@ -1100,32 +1109,34 @@ void MarlinUI::update() {
   #endif
 
   // Calculate the ADC value for the voltage divider with specified pull-down resistor value
-  #define ADC_BUTTON_VALUE(r)  (int(4096.0 * (ADC_BUTTONS_VALUE_SCALE) * r / (r + ADC_BUTTONS_R_PULLUP)))
+  #define ADC_BUTTON_VALUE(r)  int(HAL_ADC_RANGE * (ADC_BUTTONS_VALUE_SCALE) * r / (r + ADC_BUTTONS_R_PULLUP))
 
+  static constexpr uint16_t adc_button_tolerance = HAL_ADC_RANGE *   25 / 1024,
+                                adc_other_button = HAL_ADC_RANGE * 1000 / 1024;
   static const _stADCKeypadTable_ stADCKeyTable[] PROGMEM = {
     // VALUE_MIN, VALUE_MAX, KEY
-    { 4000, 4096, 1 + BLEN_KEYPAD_F1     }, // F1
-    { 4000, 4096, 1 + BLEN_KEYPAD_F2     }, // F2
-    { 4000, 4096, 1 + BLEN_KEYPAD_F3     }, // F3
-    {  ADC_BUTTON_VALUE(ADC_BUTTONS_LEFT_R_PULLDOWN)   - 100,
-       ADC_BUTTON_VALUE(ADC_BUTTONS_LEFT_R_PULLDOWN)   + 100, 1 + BLEN_KEYPAD_LEFT   }, // LEFT  ( 272 ...  472)
-    {  ADC_BUTTON_VALUE(ADC_BUTTONS_RIGHT_R_PULLDOWN)  - 100,
-       ADC_BUTTON_VALUE(ADC_BUTTONS_RIGHT_R_PULLDOWN)  + 100, 1 + BLEN_KEYPAD_RIGHT  }, // RIGHT (1948 ... 2148)
-    {  ADC_BUTTON_VALUE(ADC_BUTTONS_UP_R_PULLDOWN)     - 100,
-       ADC_BUTTON_VALUE(ADC_BUTTONS_UP_R_PULLDOWN)     + 100, 1 + BLEN_KEYPAD_UP     }, // UP    ( 618 ...  818)
-    {  ADC_BUTTON_VALUE(ADC_BUTTONS_DOWN_R_PULLDOWN)   - 100,
-       ADC_BUTTON_VALUE(ADC_BUTTONS_DOWN_R_PULLDOWN)   + 100, 1 + BLEN_KEYPAD_DOWN   }, // DOWN  (2686 ... 2886)
-    {  ADC_BUTTON_VALUE(ADC_BUTTONS_MIDDLE_R_PULLDOWN) - 100,
-       ADC_BUTTON_VALUE(ADC_BUTTONS_MIDDLE_R_PULLDOWN) + 100, 1 + BLEN_KEYPAD_MIDDLE }, // ENTER (1205 ... 1405)
+    { adc_other_button, HAL_ADC_RANGE, 1 + BLEN_KEYPAD_F1     }, // F1
+    { adc_other_button, HAL_ADC_RANGE, 1 + BLEN_KEYPAD_F2     }, // F2
+    { adc_other_button, HAL_ADC_RANGE, 1 + BLEN_KEYPAD_F3     }, // F3
+    {  ADC_BUTTON_VALUE(ADC_BUTTONS_LEFT_R_PULLDOWN)   - adc_button_tolerance,
+       ADC_BUTTON_VALUE(ADC_BUTTONS_LEFT_R_PULLDOWN)   + adc_button_tolerance, 1 + BLEN_KEYPAD_LEFT   }, // LEFT  ( 272 ...  472)
+    {  ADC_BUTTON_VALUE(ADC_BUTTONS_RIGHT_R_PULLDOWN)  - adc_button_tolerance,
+       ADC_BUTTON_VALUE(ADC_BUTTONS_RIGHT_R_PULLDOWN)  + adc_button_tolerance, 1 + BLEN_KEYPAD_RIGHT  }, // RIGHT (1948 ... 2148)
+    {  ADC_BUTTON_VALUE(ADC_BUTTONS_UP_R_PULLDOWN)     - adc_button_tolerance,
+       ADC_BUTTON_VALUE(ADC_BUTTONS_UP_R_PULLDOWN)     + adc_button_tolerance, 1 + BLEN_KEYPAD_UP     }, // UP    ( 618 ...  818)
+    {  ADC_BUTTON_VALUE(ADC_BUTTONS_DOWN_R_PULLDOWN)   - adc_button_tolerance,
+       ADC_BUTTON_VALUE(ADC_BUTTONS_DOWN_R_PULLDOWN)   + adc_button_tolerance, 1 + BLEN_KEYPAD_DOWN   }, // DOWN  (2686 ... 2886)
+    {  ADC_BUTTON_VALUE(ADC_BUTTONS_MIDDLE_R_PULLDOWN) - adc_button_tolerance,
+       ADC_BUTTON_VALUE(ADC_BUTTONS_MIDDLE_R_PULLDOWN) + adc_button_tolerance, 1 + BLEN_KEYPAD_MIDDLE }, // ENTER (1205 ... 1405)
   };
 
   uint8_t get_ADC_keyValue() {
     if (thermalManager.ADCKey_count >= 16) {
-      const uint16_t currentkpADCValue = thermalManager.current_ADCKey_raw << 2;
-      thermalManager.current_ADCKey_raw = 1024;
+      const uint16_t currentkpADCValue = thermalManager.current_ADCKey_raw;
+      thermalManager.current_ADCKey_raw = HAL_ADC_RANGE;
       thermalManager.ADCKey_count = 0;
-      if (currentkpADCValue < 4000)
-        for (uint8_t i = 0; i < ADC_KEY_NUM; i++) {
+      if (currentkpADCValue < adc_other_button)
+        LOOP_L_N(i, ADC_KEY_NUM) {
           const uint16_t lo = pgm_read_word(&stADCKeyTable[i].ADCKeyValueMin),
                          hi = pgm_read_word(&stADCKeyTable[i].ADCKeyValueMax);
           if (WITHIN(currentkpADCValue, lo, hi)) return pgm_read_byte(&stADCKeyTable[i].ADCKeyNo);
@@ -1137,27 +1148,6 @@ void MarlinUI::update() {
 #endif // HAS_ADC_BUTTONS
 
 #if HAS_ENCODER_ACTION
-
-  #if DISABLED(ADC_KEYPAD) && (ENABLED(REPRAPWORLD_KEYPAD) || !HAS_DIGITAL_BUTTONS)
-
-    /**
-     * Setup Rotary Encoder Bit Values (for two pin encoders to indicate movement)
-     * These values are independent of which pins are used for EN_A and EN_B indications
-     * The rotary encoder part is also independent to the chipset used for the LCD
-     */
-    #define GET_SHIFT_BUTTON_STATES(DST) \
-      uint8_t new_##DST = 0; \
-      WRITE(SHIFT_LD, LOW); \
-      WRITE(SHIFT_LD, HIGH); \
-      for (int8_t i = 0; i < 8; i++) { \
-        new_##DST >>= 1; \
-        if (READ(SHIFT_OUT)) SBI(new_##DST, 7); \
-        WRITE(SHIFT_CLK, HIGH); \
-        WRITE(SHIFT_CLK, LOW); \
-      } \
-      DST = ~new_##DST; //invert it, because a pressed switch produces a logical 0
-
-  #endif
 
   /**
    * Read encoder buttons from the hardware registers
@@ -1229,11 +1219,18 @@ void MarlinUI::update() {
 
         #endif // UP || DWN || LFT || RT
 
-        buttons = newbutton
+        buttons = (newbutton
           #if HAS_SLOW_BUTTONS
             | slow_buttons
           #endif
-        ;
+          #if ENABLED(TOUCH_BUTTONS) && HAS_ENCODER_ACTION
+            | (touch_buttons
+              #if HAS_ENCODER_WHEEL
+                & (~(EN_A | EN_B))
+              #endif
+            )
+          #endif
+        );
 
       #elif HAS_ADC_BUTTONS
 
@@ -1249,15 +1246,25 @@ void MarlinUI::update() {
       #endif
 
       #if HAS_SHIFT_ENCODER
-
-        GET_SHIFT_BUTTON_STATES(
-          #if ENABLED(REPRAPWORLD_KEYPAD)
-            keypad_buttons
-          #else
-            buttons
-          #endif
-        );
-
+        /**
+         * Set up Rotary Encoder bit values (for two pin encoders to indicate movement).
+         * These values are independent of which pins are used for EN_A / EN_B indications.
+         * The rotary encoder part is also independent of the LCD chipset.
+         */
+        uint8_t val = 0;
+        WRITE(SHIFT_LD, LOW);
+        WRITE(SHIFT_LD, HIGH);
+        LOOP_L_N(i, 8) {
+          val >>= 1;
+          if (READ(SHIFT_OUT)) SBI(val, 7);
+          WRITE(SHIFT_CLK, HIGH);
+          WRITE(SHIFT_CLK, LOW);
+        }
+        #if ENABLED(REPRAPWORLD_KEYPAD)
+          keypad_buttons = ~val;
+        #else
+          buttons = ~val;
+        #endif
       #endif
 
     } // next_button_update_ms
@@ -1302,7 +1309,7 @@ void MarlinUI::update() {
 #if HAS_DISPLAY
 
   #if ENABLED(EXTENSIBLE_UI)
-    #include "extensible_ui/ui_api.h"
+    #include "extui/ui_api.h"
   #endif
 
   ////////////////////////////////////////////
@@ -1355,6 +1362,10 @@ void MarlinUI::update() {
   void MarlinUI::set_status(const char * const message, const bool persist) {
     if (alert_level) return;
 
+    #if ENABLED(HOST_PROMPT_SUPPORT)
+      host_action_notify(message);
+    #endif
+
     // Here we have a problem. The message is encoded in UTF8, so
     // arbitrarily cutting it will be a problem. We MUST be sure
     // that there is no cutting in the middle of a multibyte character!
@@ -1394,6 +1405,10 @@ void MarlinUI::update() {
     if (level < alert_level) return;
     alert_level = level;
 
+    #if ENABLED(HOST_PROMPT_SUPPORT)
+      host_action_notify(message);
+    #endif
+
     // Since the message is encoded in UTF8 it must
     // only be cut on a character boundary.
 
@@ -1422,15 +1437,12 @@ void MarlinUI::update() {
     #endif
   }
 
-  #include "../Marlin.h"
-  #include "../module/printcounter.h"
-
   PGM_P print_paused = GET_TEXT(MSG_PRINT_PAUSED);
 
   /**
    * Reset the status message
    */
-  void MarlinUI::reset_status() {
+  void MarlinUI::reset_status(const bool no_welcome) {
     PGM_P printing = GET_TEXT(MSG_PRINTING);
     PGM_P welcome  = GET_TEXT(WELCOME_MSG);
     #if SERVICE_INTERVAL_1 > 0
@@ -1462,8 +1474,10 @@ void MarlinUI::update() {
       else if (print_job_timer.needsService(3)) msg = service3;
     #endif
 
-    else
+    else if (!no_welcome)
       msg = welcome;
+    else
+      return;
 
     set_status_P(msg, -1);
   }
@@ -1481,7 +1495,7 @@ void MarlinUI::update() {
       host_action_cancel();
     #endif
     #if ENABLED(HOST_PROMPT_SUPPORT)
-      host_prompt_open(PROMPT_INFO, PSTR("UI Aborted"), PSTR("Dismiss"));
+      host_prompt_open(PROMPT_INFO, PSTR("UI Aborted"), DISMISS_STR);
     #endif
     print_job_timer.stop();
     set_status_P(GET_TEXT(MSG_PRINT_ABORTED));
@@ -1497,10 +1511,6 @@ void MarlinUI::update() {
   void MarlinUI::pause_print() {
     #if HAS_LCD_MENU
       synchronize(GET_TEXT(MSG_PAUSE_PRINT));
-    #endif
-
-    #if ENABLED(POWER_LOSS_RECOVERY)
-      if (recovery.enabled) recovery.save(true, false);
     #endif
 
     #if ENABLED(HOST_PROMPT_SUPPORT)
@@ -1526,7 +1536,7 @@ void MarlinUI::update() {
     #if ENABLED(PARK_HEAD_ON_PAUSE)
       wait_for_heatup = wait_for_user = false;
     #endif
-    if (IS_SD_PAUSED()) queue.inject_P(PSTR("M24"));
+    if (IS_SD_PAUSED()) queue.inject_P(M24_STR);
     #ifdef ACTION_ON_RESUME
       host_action_resume();
     #endif
@@ -1554,4 +1564,34 @@ void MarlinUI::update() {
 
   #endif
 
-#endif // HAS_DISPLAY
+#else // !HAS_DISPLAY
+
+  //
+  // Send the status line as a host notification
+  //
+
+  void MarlinUI::set_status(const char * const message, const bool) {
+    #if ENABLED(HOST_PROMPT_SUPPORT)
+      host_action_notify(message);
+    #else
+      UNUSED(message);
+    #endif
+  }
+
+  void MarlinUI::set_status_P(PGM_P message, const int8_t) {
+    #if ENABLED(HOST_PROMPT_SUPPORT)
+      host_action_notify(message);
+    #else
+      UNUSED(message);
+    #endif
+  }
+
+  void MarlinUI::status_printf_P(const uint8_t, PGM_P const message, ...) {
+    #if ENABLED(HOST_PROMPT_SUPPORT)
+      host_action_notify(message);
+    #else
+      UNUSED(message);
+    #endif
+  }
+
+#endif // !HAS_DISPLAY

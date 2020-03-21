@@ -1,6 +1,6 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (c) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2020 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
  * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
@@ -25,7 +25,7 @@
  * Cohesion3D ReMix pin assignments
  */
 
-#ifndef LPC1769
+#ifndef MCU_LPC1769
   #error "Oops! Make sure you have the LPC1769 environment selected in your IDE."
 #endif
 
@@ -45,6 +45,13 @@
 #define Y_MAX_PIN          P1_27   // 10k pullup to 3.3V
 #define Z_MIN_PIN          P1_28   // 10k pullup to 3.3V
 #define Z_MAX_PIN          P1_29   // 10k pullup to 3.3V
+
+//
+// Z Probe (when not Z_MIN_PIN)
+//
+#ifndef Z_MIN_PROBE_PIN
+  #define Z_MIN_PROBE_PIN  P1_29
+#endif
 
 //
 // Steppers
@@ -98,13 +105,13 @@
 // Analog Inputs
 //  3.3V max when defined as an analog input
 //
-#define TEMP_0_PIN          0   // P0_23
-#define TEMP_BED_PIN        1   // P0_24
-#define TEMP_1_PIN          2   // P0_25
+#define TEMP_0_PIN          P0_23_A0
+#define TEMP_BED_PIN        P0_24_A1
+#define TEMP_1_PIN          P0_25_A2
 #if ENABLED(FILAMENT_WIDTH_SENSOR)
-  #define FILWIDTH_PIN      3   // P0_26
+  #define FILWIDTH_PIN      P0_26_A3
 #else
-  #define TEMP_2_PIN        3   // P0_26
+  #define TEMP_2_PIN        P0_26_A3
 #endif
 
 //
