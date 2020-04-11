@@ -2853,19 +2853,19 @@
   //#define USER_SCRIPT_RETURN  // Return to status screen after a script
 
   #define USER_DESC_1 "Probe Z-10"
-  #define USER_GCODE_1 "G38.3 Z-10"
+  #define USER_GCODE_1 "G91\nG38.3 Z-10 F180\nG90"
 
   #define USER_DESC_2 "Probe X-10"
-  #define USER_GCODE_2 "G38.3 X-10"
+  #define USER_GCODE_2 "G91\nG38.3 X-10 F180\nG90"
 
   #define USER_DESC_3 "Probe X+10"
-  #define USER_GCODE_3 "G38.3 X10"
+  #define USER_GCODE_3 "G91\nG38.3 X10 F180\nG90"
 
   #define USER_DESC_4 "Probe Y-10"
-  #define USER_GCODE_4 "G38.3 Y-10"
+  #define USER_GCODE_4 "G91\nG38.3 Y-10 F180\nG90"
 
   #define USER_DESC_5 "Probe Y+10"
-  #define USER_GCODE_5 "G38.3 Y10"
+  #define USER_GCODE_5 "G91\nG38.3 Y10 F180\nG90"
 
   #define USER_DESC_6 "Set zero Z"
   #define USER_GCODE_6 "G92 Z0"
