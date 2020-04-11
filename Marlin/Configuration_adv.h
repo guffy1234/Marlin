@@ -2837,20 +2837,26 @@
   #define USER_SCRIPT_AUDIBLE_FEEDBACK
   //#define USER_SCRIPT_RETURN  // Return to status screen after a script
 
-  #define USER_DESC_1 "Reset All Coordinates"
-  #define USER_GCODE_1 "G92 X0 Y0 Z0"
+  #define USER_DESC_1 "Probe Z-10"
+  #define USER_GCODE_1 "G38.3 Z-10"
 
-  #define USER_DESC_2 "Home Z Axis"
-  #define USER_GCODE_2 "G28 Z"
+  #define USER_DESC_2 "Probe X-10"
+  #define USER_GCODE_2 "G38.3 X-10"
 
-  #define USER_DESC_3 "Home X&Y"
-  #define USER_GCODE_3 "G28 X Y"
+  #define USER_DESC_3 "Probe X+10"
+  #define USER_GCODE_3 "G38.3 X10"
 
-  #define USER_DESC_4 "Move by X+100 Y+100"
-  #define USER_GCODE_4 "G91\nG0 X100 Y100 F1200\nG90"
+  #define USER_DESC_4 "Probe Y-10"
+  #define USER_GCODE_4 "G38.3 Y-10"
 
-  #define USER_DESC_5 "Set zero Z"
-  #define USER_GCODE_5 "G92 Z0"
+  #define USER_DESC_5 "Probe Y+10"
+  #define USER_GCODE_5 "G38.3 Y10"
+
+  #define USER_DESC_6 "Set zero Z"
+  #define USER_GCODE_6 "G92 Z0"
+
+  #define USER_DESC_7 "Set zero XY"
+  #define USER_GCODE_7 "G92 X0 Y0"
 #endif
 
 /**
